@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
 import requests
 from datetime import datetime, timedelta
 import warnings
@@ -14,6 +12,18 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+
+# Try to import Plotly with fallback
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"Plotly not available: {e}. Using matplotlib fallback.")
+    PLOTLY_AVAILABLE = False
+    # Define dummy objects for Plotly to prevent errors
+    px = None
+    go = None
 
 warnings.filterwarnings('ignore')
 
@@ -816,10 +826,19 @@ class AgriPredictApp:
         # Feature Importance Visualization
         st.markdown("### 🔍 Feature Importance")
         if self.feature_importance_df is not None:
-            fig = px.bar(self.feature_importance_df, x='importance', y='feature', 
-                       orientation='h', title='Feature Importance in Yield Prediction',
-                       color='importance', color_continuous_scale='Viridis')
-            st.plotly_chart(fig, use_container_width=True)
+            if PLOTLY_AVAILABLE:
+                fig = px.bar(self.feature_importance_df, x='importance', y='feature', 
+                           orientation='h', title='Feature Importance in Yield Prediction',
+                           color='importance', color_continuous_scale='Viridis')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                # Fallback to matplotlib
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.barplot(data=self.feature_importance_df, x='importance', y='feature', ax=ax)
+                ax.set_title('Feature Importance in Yield Prediction')
+                ax.set_xlabel('Importance')
+                ax.set_ylabel('Features')
+                st.pyplot(fig)
         
         # Yield Distribution
         st.markdown("### 📊 Yield Distribution Analysis")
@@ -827,16 +846,34 @@ class AgriPredictApp:
         
         with col1:
             if not predictions_df.empty:
-                fig1 = px.box(predictions_df, x='crop_type', y='predicted_yield',
-                            title='Yield Distribution by Crop Type')
-                st.plotly_chart(fig1, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    fig1 = px.box(predictions_df, x='crop_type', y='predicted_yield',
+                                title='Yield Distribution by Crop Type')
+                    st.plotly_chart(fig1, use_container_width=True)
+                else:
+                    # Fallback to matplotlib
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    predictions_df.boxplot(column='predicted_yield', by='crop_type', ax=ax)
+                    ax.set_title('Yield Distribution by Crop Type')
+                    ax.set_ylabel('Predicted Yield (kg/ha)')
+                    st.pyplot(fig)
         
         with col2:
             if not predictions_df.empty and 'created_at' in predictions_df.columns:
                 time_series = predictions_df.groupby(predictions_df['created_at'].dt.date)['predicted_yield'].mean().reset_index()
-                fig2 = px.line(time_series, x='created_at', y='predicted_yield',
-                             title='Average Yield Over Time')
-                st.plotly_chart(fig2, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    fig2 = px.line(time_series, x='created_at', y='predicted_yield',
+                                 title='Average Yield Over Time')
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    # Fallback to matplotlib
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ax.plot(time_series['created_at'], time_series['predicted_yield'])
+                    ax.set_title('Average Yield Over Time')
+                    ax.set_xlabel('Date')
+                    ax.set_ylabel('Average Yield (kg/ha)')
+                    plt.xticks(rotation=45)
+                    st.pyplot(fig)
         
         # Correlation Analysis
         st.markdown("### 🔗 Feature Correlations")
@@ -846,9 +883,16 @@ class AgriPredictApp:
             
             if len(available_cols) > 1:
                 corr_matrix = predictions_df[available_cols].corr()
-                fig3 = px.imshow(corr_matrix, text_auto=True, aspect="auto",
-                               title='Correlation Matrix of Agricultural Features')
-                st.plotly_chart(fig3, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    fig3 = px.imshow(corr_matrix, text_auto=True, aspect="auto",
+                                   title='Correlation Matrix of Agricultural Features')
+                    st.plotly_chart(fig3, use_container_width=True)
+                else:
+                    # Fallback to matplotlib
+                    fig, ax = plt.subplots(figsize=(10, 8))
+                    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
+                    ax.set_title('Correlation Matrix of Agricultural Features')
+                    st.pyplot(fig)
         except Exception as e:
             st.info("Not enough data for correlation analysis yet.")
         
