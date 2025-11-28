@@ -13,6 +13,7 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 warnings.filterwarnings('ignore')
 
@@ -59,6 +60,7 @@ st.markdown("""
         border-left: 5px solid #2E8B57;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         text-align: center;
+        color: #333333;
     }
     .section-card {
         background: #f9f9f9;
@@ -66,6 +68,7 @@ st.markdown("""
         border-radius: 10px;
         margin: 1rem 0;
         border: 1px solid #ddd;
+        color: #333333;
     }
     .help-section {
         background: #f8fff8;
@@ -73,6 +76,7 @@ st.markdown("""
         border-radius: 10px;
         margin: 1rem 0;
         border-left: 5px solid #2E8B57;
+        color: #333333;
     }
     .model-info {
         background: #e8f4f8;
@@ -80,11 +84,46 @@ st.markdown("""
         border-radius: 10px;
         margin: 0.5rem 0;
         border-left: 4px solid #1e88e5;
+        color: #333333;
+    }
+    .info-box {
+        background: #e8f4f8;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 5px solid #2E8B57;
+        color: #333333;
+    }
+    .dark-text {
+        color: #333333 !important;
+    }
+    .recommendation-item {
+        background: #f8fff8;
+        padding: 0.8rem;
+        margin: 0.5rem 0;
+        border-radius: 8px;
+        border-left: 4px solid #2E8B57;
+        color: #333333;
     }
     @media (max-width: 768px) {
         .main-header { font-size: 2rem; }
         .sub-header { font-size: 1.4rem; }
         .prediction-card { padding: 1rem; }
+    }
+    
+    /* Ensure all text has proper contrast */
+    .stMarkdown, .stText, .stInfo, .stSuccess, .stWarning, .stError {
+        color: #333333 !important;
+    }
+    
+    /* Fix Streamlit metric cards */
+    [data-testid="metric-container"] {
+        color: #333333 !important;
+    }
+    
+    /* Fix expander headers */
+    .streamlit-expanderHeader {
+        color: #333333 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -101,11 +140,11 @@ class AgriculturalDataGenerator:
         # Realistic data ranges based on Kenyan agricultural research
         self.crop_data = {
             'Maize': {
-                'base_yield': (800, 1800),  # kg/ha - KALRO data
+                'base_yield': (800, 1800),
                 'optimal_ph': (5.8, 7.2),
                 'optimal_temp': (20, 30),
                 'optimal_rainfall': (500, 1200),
-                'fert_response': 2.5  # kg yield per kg fertilizer
+                'fert_response': 2.5
             },
             'Beans': {
                 'base_yield': (400, 900),
@@ -137,7 +176,7 @@ class AgriculturalDataGenerator:
             }
         }
         
-        # County-specific climate data based on Kenya Meteorological Department
+        # County-specific climate data
         self.county_climate = {
             "Nairobi": {"avg_temp": 22, "avg_rainfall": 950, "altitude": 1700},
             "Mombasa": {"avg_temp": 28, "avg_rainfall": 1200, "altitude": 50},
@@ -169,27 +208,27 @@ class AgriculturalDataGenerator:
             
             # Seasonal variations
             temperature = np.random.normal(climate['avg_temp'], 3)
-            rainfall = max(0, np.random.normal(climate['avg_rainfall']/12, 50))  # monthly rainfall
+            rainfall = max(0, np.random.normal(climate['avg_rainfall']/12, 50))
             
-            # Calculate realistic yield based on agricultural principles
+            # Calculate realistic yield
             base_yield = np.random.uniform(crop_info['base_yield'][0], crop_info['base_yield'][1])
             
-            # Soil pH effect (quadratic penalty)
+            # Soil pH effect
             ph_penalty = 100 * max(0, abs(6.5 - soil_ph) - 0.5) ** 2
             
             # Soil moisture effect
             moisture_penalty = 50 * max(0, abs(25 - soil_moisture) - 5) ** 1.5
             
-            # Fertilizer response (diminishing returns)
+            # Fertilizer response
             fert_response = crop_info['fert_response'] * fertilizer_usage * np.exp(-fertilizer_usage/200)
             
-            # Temperature effect (Gaussian)
+            # Temperature effect
             temp_effect = 50 * np.exp(-0.5 * ((temperature - crop_info['optimal_temp'][1])/5) ** 2)
             
             # Rainfall effect
             rain_effect = 0.2 * min(rainfall, crop_info['optimal_rainfall'][1])
             
-            # Calculate final yield with some noise
+            # Calculate final yield
             predicted_yield = (
                 base_yield +
                 fert_response +
@@ -216,158 +255,145 @@ class AgriculturalDataGenerator:
         
         return pd.DataFrame(data)
 
-class MLModel:
-    """Real Machine Learning Model for Crop Yield Prediction"""
+def train_ml_model():
+    """Train ML model and return the trained components - PICKLE FRIENDLY"""
+    data_generator = AgriculturalDataGenerator()
+    training_data = data_generator.generate_training_data(2000)
     
-    def __init__(self):
-        self.model = None
-        self.scaler = StandardScaler()
-        self.label_encoders = {}
-        self.feature_names = []
-        self.performance_metrics = {}
+    # Prepare features
+    df_encoded = training_data.copy()
+    label_encoders = {}
+    
+    # Encode categorical variables
+    categorical_cols = ['crop_type', 'county']
+    for col in categorical_cols:
+        label_encoders[col] = LabelEncoder()
+        df_encoded[col] = label_encoders[col].fit_transform(df_encoded[col])
+    
+    # Define feature set
+    feature_cols = ['crop_type', 'county', 'soil_ph', 'soil_moisture', 
+                   'fertilizer_usage', 'temperature', 'rainfall', 'altitude']
+    
+    X = df_encoded[feature_cols]
+    y = df_encoded['yield']
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Train Random Forest model
+    model = RandomForestRegressor(
+        n_estimators=100,
+        max_depth=10,
+        min_samples_split=5,
+        min_samples_leaf=2,
+        random_state=42
+    )
+    
+    model.fit(X_train_scaled, y_train)
+    
+    # Make predictions
+    y_pred_train = model.predict(X_train_scaled)
+    y_pred_test = model.predict(X_test_scaled)
+    
+    # Calculate performance metrics
+    performance_metrics = {
+        'train_r2': r2_score(y_train, y_pred_train),
+        'test_r2': r2_score(y_test, y_pred_test),
+        'train_mae': mean_absolute_error(y_train, y_pred_train),
+        'test_mae': mean_absolute_error(y_test, y_pred_test),
+        'train_rmse': np.sqrt(mean_squared_error(y_train, y_pred_train)),
+        'test_rmse': np.sqrt(mean_squared_error(y_test, y_pred_test)),
+        'cv_scores': cross_val_score(model, X_train_scaled, y_train, cv=5, scoring='r2')
+    }
+    
+    # Get feature importance
+    importance_df = pd.DataFrame({
+        'feature': feature_cols,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+    
+    return {
+        'model': model,
+        'scaler': scaler,
+        'label_encoders': label_encoders,
+        'feature_names': feature_cols,
+        'performance_metrics': performance_metrics,
+        'feature_importance': importance_df
+    }
+
+def predict_yield_ml(model_data, input_data):
+    """Predict crop yield using trained ML model components"""
+    try:
+        model = model_data['model']
+        scaler = model_data['scaler']
+        label_encoders = model_data['label_encoders']
+        feature_names = model_data['feature_names']
         
-    def prepare_features(self, df):
-        """Prepare features for ML model"""
-        df_encoded = df.copy()
+        # Prepare input features
+        input_df = pd.DataFrame([input_data])
         
         # Encode categorical variables
-        categorical_cols = ['crop_type', 'county']
-        for col in categorical_cols:
-            if col not in self.label_encoders:
-                self.label_encoders[col] = LabelEncoder()
-                df_encoded[col] = self.label_encoders[col].fit_transform(df_encoded[col])
-            else:
-                df_encoded[col] = self.label_encoders[col].transform(df_encoded[col])
+        for col in ['crop_type', 'county']:
+            if col in input_df.columns and col in label_encoders:
+                input_df[col] = label_encoders[col].transform(input_df[col])
         
-        # Define feature set
-        feature_cols = ['crop_type', 'county', 'soil_ph', 'soil_moisture', 
-                       'fertilizer_usage', 'temperature', 'rainfall', 'altitude']
+        # Ensure all features are present
+        for feature in feature_names:
+            if feature not in input_df.columns:
+                input_df[feature] = 0
         
-        self.feature_names = feature_cols
-        X = df_encoded[feature_cols]
-        y = df_encoded['yield']
-        
-        return X, y
-    
-    def train_model(self, df):
-        """Train the Random Forest model"""
-        X, y = self.prepare_features(df)
-        
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        input_df = input_df[feature_names]
         
         # Scale features
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
+        input_scaled = scaler.transform(input_df)
         
-        # Train Random Forest model
-        self.model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            n_jobs=-1
-        )
+        # Make prediction
+        prediction = model.predict(input_scaled)[0]
         
-        self.model.fit(X_train_scaled, y_train)
+        # Calculate confidence interval
+        individual_predictions = []
+        for estimator in model.estimators_:
+            individual_predictions.append(estimator.predict(input_scaled)[0])
         
-        # Make predictions
-        y_pred_train = self.model.predict(X_train_scaled)
-        y_pred_test = self.model.predict(X_test_scaled)
+        std_dev = np.std(individual_predictions)
+        confidence_range = 1.96 * std_dev
         
-        # Calculate performance metrics
-        self.performance_metrics = {
-            'train_r2': r2_score(y_train, y_pred_train),
-            'test_r2': r2_score(y_test, y_pred_test),
-            'train_mae': mean_absolute_error(y_train, y_pred_train),
-            'test_mae': mean_absolute_error(y_test, y_pred_test),
-            'train_rmse': np.sqrt(mean_squared_error(y_train, y_pred_train)),
-            'test_rmse': np.sqrt(mean_squared_error(y_test, y_pred_test)),
-            'cv_scores': cross_val_score(self.model, X_train_scaled, y_train, cv=5, scoring='r2')
+        return {
+            'predicted_yield': max(0, round(prediction)),
+            'confidence_lower': max(0, round(prediction - confidence_range)),
+            'confidence_upper': round(prediction + confidence_range),
+            'std_dev': round(std_dev, 2),
+            'success': True
         }
         
-        return self.performance_metrics
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def plot_feature_importance(feature_importance_df):
+    """Create feature importance plot"""
+    if feature_importance_df is None:
+        return None
     
-    def predict_yield(self, input_data):
-        """Predict crop yield using trained ML model"""
-        if self.model is None:
-            return {'success': False, 'error': 'Model not trained'}
-        
-        try:
-            # Prepare input features
-            input_df = pd.DataFrame([input_data])
-            
-            # Encode categorical variables
-            for col in ['crop_type', 'county']:
-                if col in input_df.columns and col in self.label_encoders:
-                    input_df[col] = self.label_encoders[col].transform(input_df[col])
-            
-            # Ensure all features are present
-            for feature in self.feature_names:
-                if feature not in input_df.columns:
-                    input_df[feature] = 0  # Default value for missing features
-            
-            input_df = input_df[self.feature_names]
-            
-            # Scale features
-            input_scaled = self.scaler.transform(input_df)
-            
-            # Make prediction
-            prediction = self.model.predict(input_scaled)[0]
-            
-            # Calculate confidence interval using ensemble variance
-            individual_predictions = []
-            for estimator in self.model.estimators_:
-                individual_predictions.append(estimator.predict(input_scaled)[0])
-            
-            std_dev = np.std(individual_predictions)
-            confidence_range = 1.96 * std_dev  # 95% confidence interval
-            
-            return {
-                'predicted_yield': max(0, round(prediction)),
-                'confidence_lower': max(0, round(prediction - confidence_range)),
-                'confidence_upper': round(prediction + confidence_range),
-                'std_dev': round(std_dev, 2),
-                'success': True
-            }
-            
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(data=feature_importance_df, x='importance', y='feature', ax=ax)
+    ax.set_title('Feature Importance in Yield Prediction', color='#333333')
+    ax.set_xlabel('Importance', color='#333333')
+    ax.set_ylabel('Features', color='#333333')
+    ax.tick_params(colors='#333333')
     
-    def get_feature_importance(self):
-        """Get feature importance from trained model"""
-        if self.model is None:
-            return None
-        
-        importance_df = pd.DataFrame({
-            'feature': self.feature_names,
-            'importance': self.model.feature_importances_
-        }).sort_values('importance', ascending=False)
-        
-        return importance_df
-    
-    def plot_feature_importance(self):
-        """Create feature importance plot"""
-        importance_df = self.get_feature_importance()
-        if importance_df is None:
-            return None
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.barplot(data=importance_df, x='importance', y='feature', ax=ax)
-        ax.set_title('Feature Importance in Yield Prediction')
-        ax.set_xlabel('Importance')
-        ax.set_ylabel('Features')
-        
-        return fig
+    return fig
 
 class APIManager:
     def get_weather_data(self, county):
-        """Get simulated weather data for Kenyan counties based on real climate patterns"""
+        """Get simulated weather data for Kenyan counties"""
         try:
-            # Realistic weather data based on Kenya Meteorological Department data
             county_weather = {
                 "Nairobi": {"temperature": 22, "rainfall": 79, "humidity": 65, "altitude": 1700},
                 "Mombasa": {"temperature": 28, "rainfall": 100, "humidity": 75, "altitude": 50},
@@ -407,26 +433,47 @@ class AgriPredictApp:
         self.db_manager = DatabaseManager()
         self.api_manager = APIManager()
         self.data_generator = AgriculturalDataGenerator()
-        self.ml_model = MLModel()
         self.kenyan_counties = self.data_generator.kenyan_counties
+        
+        # Initialize ML model data
+        self.ml_model_data = None
+        self.performance_metrics = {}
+        self.feature_importance_df = None
         
         # Initialize or load ML model
         self.initialize_ml_model()
     
     def initialize_ml_model(self):
-        """Initialize or train the ML model"""
+        """Initialize or load the ML model - STREAMLIT CLOUD COMPATIBLE"""
         try:
+            # For Streamlit Cloud, use /tmp directory
+            model_path = "/tmp/trained_model.pkl" if os.path.exists('/tmp') else "trained_model.pkl"
+            
             # Try to load pre-trained model
-            self.ml_model = joblib.load('trained_model.pkl')
+            self.ml_model_data = joblib.load(model_path)
+            self.performance_metrics = self.ml_model_data.get('performance_metrics', {})
+            self.feature_importance_df = self.ml_model_data.get('feature_importance')
             st.sidebar.success("✅ Pre-trained model loaded!")
         except:
             # Train new model
             st.sidebar.info("🔄 Training ML model...")
-            training_data = self.data_generator.generate_training_data(2000)
-            performance = self.ml_model.train_model(training_data)
+            self.ml_model_data = train_ml_model()
+            self.performance_metrics = self.ml_model_data.get('performance_metrics', {})
+            self.feature_importance_df = self.ml_model_data.get('feature_importance')
             
-            # Save the trained model
-            joblib.dump(self.ml_model, 'trained_model.pkl')
+            # Save the trained model components
+            model_to_save = {
+                'model': self.ml_model_data['model'],
+                'scaler': self.ml_model_data['scaler'],
+                'label_encoders': self.ml_model_data['label_encoders'],
+                'feature_names': self.ml_model_data['feature_names'],
+                'performance_metrics': self.performance_metrics,
+                'feature_importance': self.feature_importance_df
+            }
+            
+            # Use /tmp for Streamlit Cloud
+            model_path = "/tmp/trained_model.pkl" if os.path.exists('/tmp') else "trained_model.pkl"
+            joblib.dump(model_to_save, model_path)
             st.sidebar.success("✅ ML model trained and saved!")
     
     def run(self):
@@ -455,11 +502,10 @@ class AgriPredictApp:
             # Model performance summary in sidebar
             st.markdown("---")
             st.markdown("### 📊 Model Performance")
-            if hasattr(self.ml_model, 'performance_metrics'):
-                metrics = self.ml_model.performance_metrics
-                st.metric("R² Score", f"{metrics['test_r2']:.3f}")
-                st.metric("MAE", f"{metrics['test_mae']:.1f} kg/ha")
-                st.metric("RMSE", f"{metrics['test_rmse']:.1f} kg/ha")
+            if self.performance_metrics:
+                st.metric("R² Score", f"{self.performance_metrics.get('test_r2', 0):.3f}")
+                st.metric("MAE", f"{self.performance_metrics.get('test_mae', 0):.1f} kg/ha")
+                st.metric("RMSE", f"{self.performance_metrics.get('test_rmse', 0):.1f} kg/ha")
         
         # Route to appropriate module
         if page == "Yield Prediction":
@@ -518,14 +564,11 @@ class AgriPredictApp:
             
             col1a, col2a = st.columns(2)
             with col1a:
-                soil_ph = st.slider("Soil pH", 4.0, 9.0, 6.5, 0.1,
-                                  help="Most crops grow best in pH 6.0-7.0")
+                soil_ph = st.slider("Soil pH", 4.0, 9.0, 6.5, 0.1)
             with col2a:
-                soil_moisture = st.slider("Soil Moisture (%)", 5.0, 50.0, 25.0, 1.0,
-                                        help="Optimal range: 20-30% for most crops")
+                soil_moisture = st.slider("Soil Moisture (%)", 5.0, 50.0, 25.0, 1.0)
             
-            fertilizer_usage = st.slider("Fertilizer (kg/ha)", 0.0, 300.0, 100.0, 10.0,
-                                       help="Recommended: 50-150 kg/ha for small-scale farming")
+            fertilizer_usage = st.slider("Fertilizer (kg/ha)", 0.0, 300.0, 100.0, 10.0)
             
             # Weather data
             if st.button("Get Current Weather Data"):
@@ -547,7 +590,6 @@ class AgriPredictApp:
                 if 'weather_data' in st.session_state:
                     weather = st.session_state.weather_data
                 else:
-                    # Get default weather for county
                     weather = self.api_manager.get_weather_data(county)
                 
                 # Prepare input data for ML model
@@ -563,10 +605,9 @@ class AgriPredictApp:
                 }
                 
                 with st.spinner("Generating AI prediction..."):
-                    prediction_result = self.ml_model.predict_yield(input_data)
+                    prediction_result = predict_yield_ml(self.ml_model_data, input_data)
                     
                     if prediction_result['success']:
-                        # Store in database
                         storage_success = self.db_manager.store_prediction(
                             st.session_state.user_data,
                             input_data,
@@ -612,14 +653,14 @@ class AgriPredictApp:
                 st.markdown("#### 📋 AI Recommendations")
                 recommendations = self.generate_recommendations(st.session_state.input_data)
                 for rec in recommendations:
-                    st.write(f"• {rec}")
+                    st.markdown(f'<div class="recommendation-item">• {rec}</div>', unsafe_allow_html=True)
                 
                 # Data sources information
                 st.markdown("#### 📚 Data Sources")
                 st.markdown("""
                 <div class="model-info">
-                <strong>ML Model Training Data Sources:</strong>
-                <ul>
+                <strong style="color: #333333;">ML Model Training Data Sources:</strong>
+                <ul style="color: #333333;">
                 <li>Kenya Agricultural and Livestock Research Organization (KALRO) - Base yield data</li>
                 <li>Kenya Meteorological Department - Climate patterns</li>
                 <li>FAO Soil Maps - Soil characteristics</li>
@@ -632,46 +673,41 @@ class AgriPredictApp:
         """Model Analysis and Explanation Module"""
         st.markdown("## 🤖 Machine Learning Model Analysis")
         
-        if not hasattr(self.ml_model, 'performance_metrics'):
+        if not self.performance_metrics:
             st.warning("Model not trained yet. Please make a prediction first.")
             return
         
-        metrics = self.ml_model.performance_metrics
+        metrics = self.performance_metrics
         
         # Performance Metrics
         st.markdown("### Model Performance Metrics")
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("R² Score (Test)", f"{metrics['test_r2']:.3f}",
-                     help="Proportion of variance explained by the model")
+            st.metric("R² Score (Test)", f"{metrics.get('test_r2', 0):.3f}")
         with col2:
-            st.metric("Mean Absolute Error", f"{metrics['test_mae']:.1f} kg/ha",
-                     help="Average prediction error")
+            st.metric("Mean Absolute Error", f"{metrics.get('test_mae', 0):.1f} kg/ha")
         with col3:
-            st.metric("Root Mean Square Error", f"{metrics['test_rmse']:.1f} kg/ha",
-                     help="Standard deviation of prediction errors")
+            st.metric("Root Mean Square Error", f"{metrics.get('test_rmse', 0):.1f} kg/ha")
         
         # Cross-validation scores
         st.markdown("### Cross-Validation Performance")
-        cv_mean = metrics['cv_scores'].mean()
-        cv_std = metrics['cv_scores'].std()
+        cv_mean = metrics.get('cv_scores', np.array([0])).mean()
+        cv_std = metrics.get('cv_scores', np.array([0])).std()
         
-        st.write(f"**5-Fold Cross Validation R²:** {cv_mean:.3f} ± {cv_std:.3f}")
+        st.markdown(f'<div class="info-box"><strong>5-Fold Cross Validation R²:</strong> {cv_mean:.3f} ± {cv_std:.3f}</div>', unsafe_allow_html=True)
         
         # Feature Importance
         st.markdown("### Feature Importance")
-        importance_df = self.ml_model.get_feature_importance()
-        
-        if importance_df is not None:
-            fig = self.ml_model.plot_feature_importance()
+        if self.feature_importance_df is not None:
+            fig = plot_feature_importance(self.feature_importance_df)
             st.pyplot(fig)
             
             st.markdown("#### Feature Interpretation")
             st.markdown("""
             <div class="model-info">
-            <strong>Key Insights from Feature Importance:</strong>
-            <ul>
+            <strong style="color: #333333;">Key Insights from Feature Importance:</strong>
+            <ul style="color: #333333;">
             <li><strong>Crop Type:</strong> Different crops have inherent yield potentials</li>
             <li><strong>Fertilizer Usage:</strong> Major driver of yield improvements</li>
             <li><strong>Rainfall:</strong> Critical for rain-fed agriculture in Kenya</li>
@@ -686,12 +722,12 @@ class AgriPredictApp:
         st.markdown("### Model Specifications")
         st.markdown("""
         <div class="model-info">
-        <strong>Algorithm:</strong> Random Forest Regressor<br>
-        <strong>Ensemble Size:</strong> 100 decision trees<br>
-        <strong>Training Data:</strong> 2,000 synthetic samples based on Kenyan agricultural data<br>
-        <strong>Features:</strong> 8 agricultural parameters<br>
-        <strong>Validation:</strong> 5-fold cross-validation<br>
-        <strong>Data Sources:</strong> KALRO, Kenya Meteorological Department, FAO
+        <strong style="color: #333333;">Algorithm:</strong> Random Forest Regressor<br>
+        <strong style="color: #333333;">Ensemble Size:</strong> 100 decision trees<br>
+        <strong style="color: #333333;">Training Data:</strong> 2,000 synthetic samples based on Kenyan agricultural data<br>
+        <strong style="color: #333333;">Features:</strong> 8 agricultural parameters<br>
+        <strong style="color: #333333;">Validation:</strong> 5-fold cross-validation<br>
+        <strong style="color: #333333;">Data Sources:</strong> KALRO, Kenya Meteorological Department, FAO
         </div>
         """, unsafe_allow_html=True)
     
@@ -732,9 +768,6 @@ class AgriPredictApp:
         
         return recommendations
 
-    # [Keep the existing analytics_module, database_viewer_module, and help_module methods 
-    # from your original code - they don't need significant changes]
-
     def analytics_module(self):
         """Enhanced Analytics Dashboard with ML Insights"""
         st.markdown("## 📈 Analytics Dashboard")
@@ -764,31 +797,29 @@ class AgriPredictApp:
         with col3:
             st.metric("Unique Users", predictions_df['username'].nunique())
         with col4:
-            if hasattr(self.ml_model, 'performance_metrics'):
-                st.metric("Model R²", f"{self.ml_model.performance_metrics['test_r2']:.3f}")
+            if self.performance_metrics:
+                st.metric("Model R²", f"{self.performance_metrics.get('test_r2', 0):.3f}")
         
         # ML Model Performance Section
         st.markdown("### 🤖 ML Model Performance")
-        if hasattr(self.ml_model, 'performance_metrics'):
-            metrics = self.ml_model.performance_metrics
+        if self.performance_metrics:
+            metrics = self.performance_metrics
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Test R² Score", f"{metrics['test_r2']:.3f}")
+                st.metric("Test R² Score", f"{metrics.get('test_r2', 0):.3f}")
             with col2:
-                st.metric("Mean Absolute Error", f"{metrics['test_mae']:.1f} kg/ha")
+                st.metric("Mean Absolute Error", f"{metrics.get('test_mae', 0):.1f} kg/ha")
             with col3:
-                st.metric("Cross-Validation Score", f"{metrics['cv_scores'].mean():.3f}")
+                st.metric("Cross-Validation Score", f"{metrics.get('cv_scores', np.array([0])).mean():.3f}")
         
         # Feature Importance Visualization
         st.markdown("### 🔍 Feature Importance")
-        if hasattr(self.ml_model, 'get_feature_importance'):
-            importance_df = self.ml_model.get_feature_importance()
-            if importance_df is not None:
-                fig = px.bar(importance_df, x='importance', y='feature', 
-                           orientation='h', title='Feature Importance in Yield Prediction',
-                           color='importance', color_continuous_scale='Viridis')
-                st.plotly_chart(fig, use_container_width=True)
+        if self.feature_importance_df is not None:
+            fig = px.bar(self.feature_importance_df, x='importance', y='feature', 
+                       orientation='h', title='Feature Importance in Yield Prediction',
+                       color='importance', color_continuous_scale='Viridis')
+            st.plotly_chart(fig, use_container_width=True)
         
         # Yield Distribution
         st.markdown("### 📊 Yield Distribution Analysis")
@@ -796,24 +827,20 @@ class AgriPredictApp:
         
         with col1:
             if not predictions_df.empty:
-                # Yield by crop type
                 fig1 = px.box(predictions_df, x='crop_type', y='predicted_yield',
                             title='Yield Distribution by Crop Type')
                 st.plotly_chart(fig1, use_container_width=True)
         
         with col2:
-            if not predictions_df.empty:
-                # Yield trends over time
-                if 'created_at' in predictions_df.columns:
-                    time_series = predictions_df.groupby(predictions_df['created_at'].dt.date)['predicted_yield'].mean().reset_index()
-                    fig2 = px.line(time_series, x='created_at', y='predicted_yield',
-                                 title='Average Yield Over Time')
-                    st.plotly_chart(fig2, use_container_width=True)
+            if not predictions_df.empty and 'created_at' in predictions_df.columns:
+                time_series = predictions_df.groupby(predictions_df['created_at'].dt.date)['predicted_yield'].mean().reset_index()
+                fig2 = px.line(time_series, x='created_at', y='predicted_yield',
+                             title='Average Yield Over Time')
+                st.plotly_chart(fig2, use_container_width=True)
         
         # Correlation Analysis
         st.markdown("### 🔗 Feature Correlations")
         try:
-            # Select numerical columns for correlation
             numerical_cols = ['soil_ph', 'soil_moisture', 'fertilizer_usage', 'temperature', 'rainfall', 'predicted_yield']
             available_cols = [col for col in numerical_cols if col in predictions_df.columns]
             
@@ -864,8 +891,8 @@ class AgriPredictApp:
             with col3:
                 st.metric("Analytics Records", stats['analytics_count'])
             with col4:
-                if hasattr(self.ml_model, 'performance_metrics'):
-                    st.metric("Model R²", f"{self.ml_model.performance_metrics['test_r2']:.3f}")
+                if self.performance_metrics:
+                    st.metric("Model R²", f"{self.performance_metrics.get('test_r2', 0):.3f}")
         
         # Table selection
         table_option = st.selectbox(
@@ -892,25 +919,23 @@ class AgriPredictApp:
                     st.write(f"**Total rows:** {len(analytics_df)}")
                     
             elif table_option == "Model Performance":
-                if hasattr(self.ml_model, 'performance_metrics'):
-                    metrics = self.ml_model.performance_metrics
+                if self.performance_metrics:
+                    metrics = self.performance_metrics
                     metrics_df = pd.DataFrame([
-                        {'Metric': 'R² Score (Train)', 'Value': f"{metrics['train_r2']:.3f}"},
-                        {'Metric': 'R² Score (Test)', 'Value': f"{metrics['test_r2']:.3f}"},
-                        {'Metric': 'MAE (Train)', 'Value': f"{metrics['train_mae']:.1f} kg/ha"},
-                        {'Metric': 'MAE (Test)', 'Value': f"{metrics['test_mae']:.1f} kg/ha"},
-                        {'Metric': 'RMSE (Train)', 'Value': f"{metrics['train_rmse']:.1f} kg/ha"},
-                        {'Metric': 'RMSE (Test)', 'Value': f"{metrics['test_rmse']:.1f} kg/ha"},
-                        {'Metric': 'CV Score Mean', 'Value': f"{metrics['cv_scores'].mean():.3f}"},
-                        {'Metric': 'CV Score Std', 'Value': f"{metrics['cv_scores'].std():.3f}"}
+                        {'Metric': 'R² Score (Train)', 'Value': f"{metrics.get('train_r2', 0):.3f}"},
+                        {'Metric': 'R² Score (Test)', 'Value': f"{metrics.get('test_r2', 0):.3f}"},
+                        {'Metric': 'MAE (Train)', 'Value': f"{metrics.get('train_mae', 0):.1f} kg/ha"},
+                        {'Metric': 'MAE (Test)', 'Value': f"{metrics.get('test_mae', 0):.1f} kg/ha"},
+                        {'Metric': 'RMSE (Train)', 'Value': f"{metrics.get('train_rmse', 0):.1f} kg/ha"},
+                        {'Metric': 'RMSE (Test)', 'Value': f"{metrics.get('test_rmse', 0):.1f} kg/ha"},
+                        {'Metric': 'CV Score Mean', 'Value': f"{metrics.get('cv_scores', np.array([0])).mean():.3f}"},
+                        {'Metric': 'CV Score Std', 'Value': f"{metrics.get('cv_scores', np.array([0])).std():.3f}"}
                     ])
                     st.dataframe(metrics_df)
                     
-                    # Feature importance table
-                    importance_df = self.ml_model.get_feature_importance()
-                    if importance_df is not None:
+                    if self.feature_importance_df is not None:
                         st.subheader("Feature Importance")
-                        st.dataframe(importance_df)
+                        st.dataframe(self.feature_importance_df)
                 else:
                     st.info("Model performance data not available. Train the model first.")
                     
@@ -936,7 +961,7 @@ class AgriPredictApp:
         st.markdown("## 📚 Help & Guidance")
         
         st.markdown("""
-        <div style="background: #f0f8f0; padding: 1.5rem; border-radius: 10px; margin: 1rem 0; border-left: 5px solid #2E8B57;">
+        <div class="info-box">
             <h3 style="color: #2E8B57; margin-top: 0;">Welcome to AgriPredict AI</h3>
             <p style="color: #333333;">This app uses machine learning to predict crop yields and provide farming recommendations specifically for Kenyan agricultural conditions.</p>
         </div>
@@ -946,17 +971,17 @@ class AgriPredictApp:
         st.markdown("### 🤖 About the Machine Learning Model")
         st.markdown("""
         <div class="model-info">
-        <strong>Model Type:</strong> Random Forest Regressor<br>
-        <strong>Training Data:</strong> Synthetic data based on Kenyan agricultural research<br>
-        <strong>Key Features:</strong> Crop type, soil conditions, weather data, fertilizer usage<br>
-        <strong>Accuracy:</strong> R² score typically > 0.85 on test data<br>
-        <strong>Data Sources:</strong> KALRO, Kenya Meteorological Department, FAO soil data
+        <strong style="color: #333333;">Model Type:</strong> Random Forest Regressor<br>
+        <strong style="color: #333333;">Training Data:</strong> Synthetic data based on Kenyan agricultural research<br>
+        <strong style="color: #333333;">Key Features:</strong> Crop type, soil conditions, weather data, fertilizer usage<br>
+        <strong style="color: #333333;">Accuracy:</strong> R² score typically > 0.85 on test data<br>
+        <strong style="color: #333333;">Data Sources:</strong> KALRO, Kenya Meteorological Department, FAO soil data
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("### 🚀 How to Get Started")
         st.markdown("""
-        <div style="background: #f0f8f0; padding: 1.5rem; border-radius: 10px; margin: 1rem 0; border-left: 5px solid #2E8B57;">
+        <div class="info-box">
             <h4 style="color: #2E8B57;">Step-by-Step Guide</h4>
             <ol style="color: #333333;">
                 <li><strong>Complete your profile</strong> in the sidebar</li>
@@ -975,16 +1000,16 @@ class AgriPredictApp:
         st.markdown("### 📊 Data Sources & Validation")
         st.markdown("""
         <div class="model-info">
-        <strong>Primary Data Sources:</strong>
-        <ul>
+        <strong style="color: #333333;">Primary Data Sources:</strong>
+        <ul style="color: #333333;">
         <li><strong>KALRO (Kenya Agricultural and Livestock Research Organization):</strong> Crop yield data and best practices</li>
         <li><strong>Kenya Meteorological Department:</strong> Historical climate data and patterns</li>
         <li><strong>FAO (Food and Agriculture Organization):</strong> Soil maps and agricultural research</li>
         <li><strong>Agricultural Extension Services:</strong> Farmer-reported data and validation</li>
         </ul>
         
-        <strong>Model Validation:</strong>
-        <ul>
+        <strong style="color: #333333;">Model Validation:</strong>
+        <ul style="color: #333333;">
         <li>5-fold cross-validation for robustness</li>
         <li>Test set performance metrics (R², MAE, RMSE)</li>
         <li>Feature importance analysis</li>
