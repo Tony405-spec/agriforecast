@@ -1,0 +1,26 @@
+# Web app
+streamlit==1.38.0
+
+# Data handling
+pandas==2.2.2
+numpy==1.26.4
+
+# Machine learning
+scikit-learn==1.5.1
+shap==0.46.0
+
+# Visualization
+plotly==5.23.0
+altair==5.4.0
+
+# HTTP / API integration
+requests==2.32.3
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Export capabilities
+openpyxl==3.1.5
+fpdf2==2.7.9
+
+# Database (SQLite ships with Python stdlib — sqlite3 needs no install)
