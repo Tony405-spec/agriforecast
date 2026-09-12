@@ -1,17 +1,51 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
 .pytest_cache/
-.venv/
-venv/
 
-# Generated model and local database artifacts
-*.pkl
-*.joblib
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# SQLite databases
 *.db
 *.sqlite
 *.sqlite3
+data/*.db
 
-# Local Streamlit and environment files
+# Generated model artifacts
+*.pkl
+*.joblib
+
+# Streamlit
 .streamlit/secrets.toml
-.env
-.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Distribution / packaging
+build/
+dist/
+*.egg
