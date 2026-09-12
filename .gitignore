@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -7,6 +9,7 @@ __pycache__/
 *$py.class
 *.egg-info/
 .eggs/
+.pytest_cache/
 
 # Virtual environments
 venv/
@@ -19,6 +22,10 @@ ENV/
 *.sqlite
 *.sqlite3
 data/*.db
+
+# Generated model artifacts
+*.pkl
+*.joblib
 
 # Streamlit
 .streamlit/secrets.toml
